@@ -100,8 +100,8 @@ ot.OpenThermMessageID = {
 local pin_in = 5
 local pin_out = 4
 local status = ot.OpenThermStatus.NOT_INITIALIZED
-local localResponse = 0
-local localResponseStatus = ot.OpenThermResponseStatus.NONE
+local localResponse
+local localResponseStatus
 local responseTimestamp = 0
 local responseBitIndex = 0
 
@@ -312,7 +312,7 @@ end
 
 function ot.buildRequest(requestType, messageId, data)
     log("ot.buildRequest start")
-    request = data
+    local request = data
 
     if (requestType == ot.OpenThermRequestType.WRITE) then
         request = bit.bor(request, bit.lshift(1, 28))
