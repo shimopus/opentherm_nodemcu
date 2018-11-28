@@ -293,6 +293,12 @@ local function parity(frame)
     return bit.band(p, 1) == 1
 end
 
+local function levelToBool(level)
+    return level == HIGH
+end
+
+------- LOW LEVEL API -------
+
 function ot.init(pinIn, pinOut)
     pin_in = pinIn
     pin_out = pinOut
@@ -332,18 +338,65 @@ function ot.sendRequest(request, responseCallback)
     table.insert(requestsQueue, { request, responseCallback })
 end
 
---building requests
+------- UTILS -------
 
--- TODO why we need to provide any parameters here?
-function ot.buildGetBoilerStatusRequest(enableCentralHeating, enableHotWater, enableCooling, enableOutsideTemperatureCompensation, enableCentralHeating2)
-    local data = bit.bor(enableCentralHeating and HIGH or LOW,
-            bit.lshift(enableHotWater and HIGH or LOW, 1),
-            bit.lshift(enableCooling and HIGH or LOW, 2),
-            bit.lshift(enableOutsideTemperatureCompensation and HIGH or LOW, 3),
-            bit.lshift(enableCentralHeating2 and HIGH or LOW, 4))
+function ot.floatToU88(floatData)
+    return temperature * 256.0 --TODO works only for positive values
+end
+
+function ot.u88ToFloat(u88Data)
+    -- if u88Data < 0
+    if (u88Data & 0x8000) then
+        return -(0x10000 - u88Data) / 256.0
+    else
+        return u88Data / 256.0
+    end
+end
+
+------- HIGH LEVEL API -------
+
+--[[
+Gets current status of Boiler (slave)
+@return responseStatus,
+        CentralHeatingEnabled,
+        HotWaterEnabled,
+        isFlameOn,
+        CoolingEnabled,
+        OutsideTemperatureCompensationActive,
+        CentralHeating2Enabled,
+        CentralHeatingActive,
+        HotWaterActive,
+        isFlameOn,
+        CoolingActive,
+        CentralHeating2Active,
+        DiagnosticIndication
+]]
+function ot.getBoilerStatus()
+    local data = 0
     data = bit.lshift(data, 8)
     log(data)
-    return ot.buildRequest(ot.OpenThermRequestType.READ, ot.OpenThermMessageID.Status, data);
+
+    local request = ot.buildRequest(ot.OpenThermRequestType.READ, ot.OpenThermMessageID.Status, data)
+    co = coroutine.create(function ()
+        ot.sendRequest(request,function(response, responseStatus)
+            coroutine.yield(response, responseStatus)
+        end);
+    end)
+
+    local _,response, responseStatus = coroutine.resume(co)
+
+    return responseStatus,
+        levelToBool(bit.band(response, 0x8000)), --CentralHeatingEnabled
+        levelToBool(bit.band(response, 0x4000)), --HotWaterEnabled
+        levelToBool(bit.band(response, 0x2000)), --CoolingEnabled
+        levelToBool(bit.band(response, 0x1000)), --OutsideTemperatureCompensationActive
+        levelToBool(bit.band(response, 0x800)), --CentralHeating2Enabled
+        levelToBool(bit.band(response, 0x2)), --CentralHeatingActive
+        levelToBool(bit.band(response, 0x4)), --HotWaterActive
+        levelToBool(bit.band(response, 0x8)), --isFlameOn
+        levelToBool(bit.band(response, 0x10)), --CoolingActive
+        levelToBool(bit.band(response, 0x20)), --CentralHeating2Active
+        levelToBool(bit.band(response, 0x40)) --DiagnosticIndication
 end
 
 return ot
