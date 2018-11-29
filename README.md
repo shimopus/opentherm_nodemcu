@@ -21,7 +21,7 @@ This library uses interrupts to achieve better stability and synchronization wit
  On image you can see than output pin D1 of the controller is connected to the input pin of Adapter. And input pin D2 of the controller is connected to output pin of Adapter
  
  # OpenTherm Library Usage 
- First of all you need to [upload library into ESP](#Upload Library into ESP8266 with NodeMCU). Then in you code include 
+ First of all you need to [upload library into ESP](#upload-library-into-esp8266-with-nodemcu). Then in you code include 
  
  ```lua
  local ot = require "openThermLibrary"
