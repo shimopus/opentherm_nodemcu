@@ -5,6 +5,5 @@ local ot = require "openThermLibrary"
 
 print("start...")
 
-ot.init(5, 4)
-ot.begin()
+ot.begin(5, 4)
 print("response => ", ot.getBoilerStatus())

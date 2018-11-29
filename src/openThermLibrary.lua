@@ -97,8 +97,7 @@ ot.OpenThermMessageID = {
     SlaveVersion = 127 -- u8 / u8  Slave product version number and type
 }
 
-local pin_in = 5
-local pin_out = 4
+local pin_out
 local status = ot.OpenThermStatus.NOT_INITIALIZED
 local localResponse
 local localResponseStatus
@@ -299,13 +298,25 @@ end
 
 ------- LOW LEVEL API -------
 
-function ot.init(pinIn, pinOut)
-    pin_in = pinIn
-    pin_out = pinOut
-end
+--[[
+Initializes the OpenTherm protocol pins and starting to wait for requests.
 
-function ot.begin()
-    gpio.mode(pin_in, gpio.INT);
+*ATTENTION*: Controller(ESP8266) input pin should support interrupts.
+Interrupts may be attached to any GPIO pin except GPIO16,
+but since GPIO6-GPIO11 are typically used to interface with the flash memory ICs on most esp8266 modules,
+applying interrupts to these pins are likely to cause problems
+So my recommendation is to use pins 4 (pinOut) and 5 (pinIn)
+
+Be careful. Device connection scheme:
+    -IN (OpenTherm Adapter)  -> ESP8266 (5) Output Pin
+    -OUT (OpenTherm Adapter) -> ESP8266 (4) Input Pin
+
+I recommend to use OpenTherm Adapter (http://ihormelnyk.com/opentherm_adapter) by Ihor Melnik which is grate wired.
+]]
+function ot.begin(pinIn, pinOut)
+    pin_out = pinOut
+
+    gpio.mode(pinIn, gpio.INT);
     gpio.mode(pin_out, gpio.OUTPUT);
 
     gpio.trig(pin_in, "both", responseReading)
@@ -316,6 +327,16 @@ function ot.begin()
     end)
 end
 
+--[[
+Creates the full request based on requestType, messageId and request's data. Should be used carefully based on
+specification.
+
+@parameter requestType - type of request. Use ot.OpenThermRequestType table
+@parameter messageId - id of the message. Use ot.OpenThermMessageID table
+@parameter data - the data of message. Use helper functions like ot.u88ToFloat and ot.floatToU88 to generate data value
+
+@return request which could be sent using ot.sendRequest
+]]
 function ot.buildRequest(requestType, messageId, data)
     log("ot.buildRequest start")
     local request = data
@@ -334,19 +355,35 @@ function ot.buildRequest(requestType, messageId, data)
     return request
 end
 
+--[[
+Sends the request which could be bilt using ot.buildRequest over the OpenTherm connection
+Onse response will be taken responseCallback will be called.
+
+@parameter response - the full response (32 bit value) with message type and data-id and data-value
+@parameter responseStatus - a status of the response from ot.OpenThermResponseStatus
+responseCallback(response, responseStatus)
+]]
 function ot.sendRequest(request, responseCallback)
     table.insert(requestsQueue, { request, responseCallback })
 end
 
 ------- UTILS -------
 
+--[[
+Convets float number into the data in f8.8 (float) format (look in the specification)
+Works for positive numbers only :(
+]]
 function ot.floatToU88(floatData)
-    return temperature * 256.0 --TODO works only for positive values
+    return floatData * 256.0 --TODO works only for positive values
 end
 
+--[[
+Convets the data in f8.8 (float) format (look in the specification) ito float number
+Works for both positive and negative numbers
+]]
 function ot.u88ToFloat(u88Data)
     -- if u88Data < 0
-    if (u88Data & 0x8000) then
+    if (bit.band(u88Data, 0x8000)) then
         return -(0x10000 - u88Data) / 256.0
     else
         return u88Data / 256.0
@@ -372,12 +409,10 @@ Gets current status of Boiler (slave)
         DiagnosticIndication
 ]]
 function ot.getBoilerStatus()
-    local data = 0
-    data = bit.lshift(data, 8)
-    log(data)
+    local data = 0 -- read request. Don't need to send data at all
 
     local request = ot.buildRequest(ot.OpenThermRequestType.READ, ot.OpenThermMessageID.Status, data)
-    co = coroutine.create(function ()
+    local co = coroutine.create(function ()
         ot.sendRequest(request,function(response, responseStatus)
             coroutine.yield(response, responseStatus)
         end);
